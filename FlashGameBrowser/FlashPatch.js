@@ -1,54 +1,38 @@
-// FlashGameBrowser - Flash 检测修复脚本 v3
-// 核心思路：4399 通过 document.write 创建 <embed> 并调用其 checkflash() 方法
-// 我们提前在 HTMLEmbedElement 原型上添加 checkflash 方法，使检测直接通过
+// FlashGameBrowser - Flash 检测修复脚本 v4
 (function(){
     'use strict';
     var TAG = '[FlashGameBrowser]';
+    var url = window.location.href;
 
-    // === 核心修复：让所有 embed/object 元素自带 checkflash 方法 ===
-    // 4399 检测: document.getElementById("testplayer1").checkflash()
-    // 这个方法会在 Flash SWF 加载后被 ExternalInterface 注册
-    // 我们在 DOM 层面直接提供此方法，检测永不失败
+    // === 核心修复：HTMLEmbedElement.prototype.checkflash ===
     try {
-        if (typeof HTMLEmbedElement !== 'undefined') {
-            HTMLEmbedElement.prototype.checkflash = function() {
-                return 1;
-            };
+        if (typeof HTMLEmbedElement !== 'undefined' && !HTMLEmbedElement.prototype.checkflash) {
+            HTMLEmbedElement.prototype.checkflash = function() { return 1; };
             console.log(TAG + ' HTMLEmbedElement.prototype.checkflash installed');
         }
-    } catch(e) {
-        console.log(TAG + ' HTMLEmbedElement not available yet: ' + e);
-    }
+    } catch(e) {}
 
     try {
-        if (typeof HTMLObjectElement !== 'undefined') {
-            HTMLObjectElement.prototype.checkflash = function() {
-                return 1;
-            };
+        if (typeof HTMLObjectElement !== 'undefined' && !HTMLObjectElement.prototype.checkflash) {
+            HTMLObjectElement.prototype.checkflash = function() { return 1; };
             console.log(TAG + ' HTMLObjectElement.prototype.checkflash installed');
         }
-    } catch(e) {
-        console.log(TAG + ' HTMLObjectElement not available yet: ' + e);
-    }
+    } catch(e) {}
 
-    // === 备用方案：拦截 showBlockFlash (以防它在我们之前被调用) ===
-    // 使用 property trap 确保无论何时定义都能拦截
+    // === 4399 页面: 拦截 showBlockFlash ===
     var blockedOnce = false;
     function patchBlockFlash() {
         if (blockedOnce) return;
         if (typeof window.showBlockFlash === 'function') {
             var origBlock = window.showBlockFlash;
             window.showBlockFlash = function() {
-                console.log(TAG + ' showBlockFlash CALLED, attempting recovery...');
+                console.log(TAG + ' showBlockFlash CALLED, recovering...');
                 var attempts = 0;
                 function tryRestore() {
                     attempts++;
                     if (typeof window.closeBlockFlash === 'function') {
                         window.closeBlockFlash();
-                        console.log(TAG + ' closeBlockFlash succeeded on attempt ' + attempts);
-                        // Check result
-                        var iframe = document.getElementById('flash22');
-                        if (iframe) console.log(TAG + ' iframe flash22 src=' + iframe.src);
+                        console.log(TAG + ' closeBlockFlash attempt ' + attempts);
                     }
                     if (attempts < 8) setTimeout(tryRestore, 1000);
                 }
@@ -56,35 +40,99 @@
             };
             window.showBlockFlashIE = window.showBlockFlash;
             blockedOnce = true;
-            console.log(TAG + ' showBlockFlash patched reactively');
+            console.log(TAG + ' showBlockFlash patched');
         }
     }
-
-    // 立即尝试修补
     patchBlockFlash();
-
-    // 如果 showBlockFlash 还未定义，持续监控直到定义
     if (!blockedOnce) {
         var checkCount = 0;
         var checkInterval = setInterval(function() {
             checkCount++;
             patchBlockFlash();
-            if (blockedOnce || checkCount > 30) {
-                clearInterval(checkInterval);
-                console.log(TAG + ' showBlockFlash monitoring ended (patched=' + blockedOnce + ', checks=' + checkCount + ')');
-            }
+            if (blockedOnce || checkCount > 30) clearInterval(checkInterval);
         }, 100);
     }
 
+    // === Tencent 游戏页面：防止 flashdown 重定向 + 强制加载 SWF ===
+    if (url.indexOf('17roco.qq.com') !== -1) {
+        console.log(TAG + ' Tencent game page detected');
+
+        // 1. 全局设置 flashready，防止 11 秒后重定向到 /cgi-bin/login
+        window.flashready = 1;
+
+        // 2. 拦截 confirm 对话框（flashdown 中的 confirm 调用）
+        var origConfirm = window.confirm;
+        window.confirm = function(msg) {
+            console.log(TAG + ' confirm intercepted: ' + msg);
+            if (msg.indexOf('flash') !== -1 || msg.indexOf('异常') !== -1) {
+                return false; // 拒绝，不重定向
+            }
+            return origConfirm.call(window, msg);
+        };
+
+        // 3. 页面加载后检查 embed 是否存在并强制重建
+        function fixEmbed() {
+            var objects = document.getElementsByTagName('object');
+            var embeds = document.getElementsByTagName('embed');
+            console.log(TAG + ' objects=' + objects.length + ' embeds=' + embeds.length);
+
+            // 查找 rocoswf 相关的元素
+            for (var i = 0; i < embeds.length; i++) {
+                var e = embeds[i];
+                console.log(TAG + ' embed[' + i + '] id=' + e.id + ' src=' + e.src + ' type=' + e.type);
+                if (!e.src && !e.getAttribute('src')) {
+                    // embed 可能没有正确设置 src
+                    var src = e.getAttribute('src');
+                    console.log(TAG + ' embed raw src attr: ' + src);
+                }
+            }
+
+            // 如果 SWF embed 存在但没有加载，尝试强制重建
+            var swfEmbed = document.getElementById('rocoswf-inner');
+            if (!swfEmbed) {
+                // 没有找到 rocoswf-inner，可能 embed 还没被 document.write 创建
+                console.log(TAG + ' rocoswf-inner not found yet, will retry');
+                return false;
+            }
+
+            console.log(TAG + ' rocoswf-inner found, src=' + swfEmbed.src);
+
+            // 如果 embed.src 为空，尝试从属性重建
+            if (!swfEmbed.src || swfEmbed.src === '') {
+                var swfSrc = swfEmbed.getAttribute('src');
+                console.log(TAG + ' src attribute: ' + swfSrc);
+                if (swfSrc) {
+                    // 重建 SWF 加载
+                    swfEmbed.setAttribute('src', swfSrc);
+                    console.log(TAG + ' forced src re-set');
+                }
+            }
+
+            return true;
+        }
+
+        // 先等页面脚本执行（document.write 创建 embed）
+        setTimeout(function() {
+            var found = fixEmbed();
+            if (!found) {
+                // 还没创建，再等
+                setTimeout(function() {
+                    if (!fixEmbed()) {
+                        setTimeout(function() { fixEmbed(); }, 1000);
+                    }
+                }, 500);
+            }
+        }, 500);
+    }
+
     // === 诊断信息 ===
-    console.log(TAG + ' injected on ' + window.location.href);
-    console.log(TAG + ' navigator.plugins.length=' + navigator.plugins.length);
-    console.log(TAG + ' mimeTypes flash=' + !!navigator.mimeTypes['application/x-shockwave-flash']);
+    console.log(TAG + ' injected on ' + url);
+    console.log(TAG + ' plugins=' + navigator.plugins.length + ' mimeTypes flash=' + !!navigator.mimeTypes['application/x-shockwave-flash']);
     for (var pi = 0; pi < Math.min(navigator.plugins.length, 5); pi++) {
         console.log(TAG + ' plugin[' + pi + ']=' + navigator.plugins[pi].name);
     }
 
-    // 修补 navigator.plugins (如果需要)
+    // === navigator.plugins polyfill ===
     try {
         var hasFP = false;
         var pl = navigator.plugins;
@@ -108,9 +156,7 @@
                 },
                 configurable: true
             });
-            console.log(TAG + ' navigator.plugins polyfill applied');
+            console.log(TAG + ' plugins polyfill applied');
         }
     } catch(ex) {}
-
-    console.log(TAG + ' initialization complete');
 })();
