@@ -6,7 +6,7 @@ obj/
 packages/
 *.nupkg
 
-# 用户数据
+# 用户数据 (运行时生成)
 UserData/
 
 # IDE
@@ -19,17 +19,8 @@ UserData/
 # 临时文件
 *.tmp
 *.log
-*.pdb
 *.swp
 *~
 
 # macOS
 .DS_Store
-
-# 大体积二进制（Flash DLL 已放在 Plugins）
-# CleanFlashInstaller 下载的临时文件
-CleanFlashInstaller*.exe
-flash_cn_installer.exe
-
-# 但保留 Plugins 目录的 DLL
-!Plugins/pepflashplayer.dll
