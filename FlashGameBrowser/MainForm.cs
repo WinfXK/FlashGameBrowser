@@ -27,7 +27,7 @@ namespace FlashGameBrowser
         private bool _savedToolStripVisible;
         private bool _savedStatusStripVisible;
 
-        private const string HOME_URL = "https://www.4399.com";
+        private const string HOME_URL = "http://www.4399.com/flash/32979.htm";
         private const string FLASH_TEST_URL = "https://get.adobe.com/flashplayer/about/";
 
         public MainForm()
@@ -196,11 +196,19 @@ namespace FlashGameBrowser
         {
             if (_browser == null) return;
 
-            // Flash 检测修复：注入 FlashPatch.js (嵌入资源)
-            // 解决 4399/7k7k 等网站的 Flash 检测问题
+            // Flash 检测修复：必须在页面脚本执行前注入
+            // 4399 通过 document.write 加载 flashopen_cpp.js 并立即轮询 checkflash()
+            // FrameLoadEnd 太晚，必须用 FrameLoadStart 提前覆盖
             string flashPatchJs = LoadEmbeddedScript("FlashGameBrowser.FlashPatch.js");
             if (!string.IsNullOrEmpty(flashPatchJs))
             {
+                // 方案1: FrameLoadStart — 在页面任何脚本执行前注入
+                _browser.FrameLoadStart += (s, e) =>
+                {
+                    if (!e.Frame.IsMain) return;
+                    e.Frame.ExecuteJavaScriptAsync(flashPatchJs);
+                };
+                // 方案2: FrameLoadEnd 再补一次，确保覆盖
                 _browser.FrameLoadEnd += (s, e) =>
                 {
                     if (!e.Frame.IsMain) return;
@@ -651,7 +659,23 @@ namespace FlashGameBrowser
             ref string text) => false;
 
         public bool OnConsoleMessage(IWebBrowser chromiumWebBrowser,
-            ConsoleMessageEventArgs consoleMessageArgs) => false;
+            ConsoleMessageEventArgs e)
+        {
+            // 捕获网页控制台日志写入文件
+            try
+            {
+                string logPath = Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "UserData", "page_console.log");
+                string level = "LOG";
+                if ((int)e.Level == 0) level = "ERROR";
+                else if ((int)e.Level == 1) level = "WARN";
+                else if ((int)e.Level == 2) level = "INFO";
+                File.AppendAllText(logPath,
+                    $"[{DateTime.Now:HH:mm:ss.fff}][{level}] {e.Source}:{e.Line} {e.Message}{Environment.NewLine}");
+            }
+            catch { }
+            return false;
+        }
 
         public bool OnAutoResize(IWebBrowser chromiumWebBrowser,
             IBrowser browser, CefSharp.Structs.Size newSize) => false;
