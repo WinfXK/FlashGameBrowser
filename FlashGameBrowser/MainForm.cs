@@ -202,16 +202,13 @@ namespace FlashGameBrowser
             string flashPatchJs = LoadEmbeddedScript("FlashGameBrowser.FlashPatch.js");
             if (!string.IsNullOrEmpty(flashPatchJs))
             {
-                // 方案1: FrameLoadStart — 在页面任何脚本执行前注入
+                // 所有 frame（包括游戏 iframe）都注入 Flash 修复脚本
                 _browser.FrameLoadStart += (s, e) =>
                 {
-                    if (!e.Frame.IsMain) return;
                     e.Frame.ExecuteJavaScriptAsync(flashPatchJs);
                 };
-                // 方案2: FrameLoadEnd 再补一次，确保覆盖
                 _browser.FrameLoadEnd += (s, e) =>
                 {
-                    if (!e.Frame.IsMain) return;
                     e.Frame.ExecuteJavaScriptAsync(flashPatchJs);
                 };
             }
