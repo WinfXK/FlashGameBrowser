@@ -30,9 +30,17 @@
     <ApplicationManifest Include="app.manifest" />
   </ItemGroup>
 
-  <!-- Copy Flash plugin to output if present -->
+  <!-- Flash 修复脚本 (嵌入资源) -->
+  <ItemGroup>
+    <EmbeddedResource Include="FlashPatch.js" />
+  </ItemGroup>
+
+  <!-- Copy Flash plugin + manifest to output -->
   <ItemGroup>
     <None Update="Plugins\pepflashplayer.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Plugins\manifest.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

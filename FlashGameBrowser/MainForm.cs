@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
 using CefSharp;
 using CefSharp.WinForms;
@@ -194,6 +195,18 @@ namespace FlashGameBrowser
         private void WireUpEvents()
         {
             if (_browser == null) return;
+
+            // Flash 检测修复：注入 FlashPatch.js (嵌入资源)
+            // 解决 4399/7k7k 等网站的 Flash 检测问题
+            string flashPatchJs = LoadEmbeddedScript("FlashGameBrowser.FlashPatch.js");
+            if (!string.IsNullOrEmpty(flashPatchJs))
+            {
+                _browser.FrameLoadEnd += (s, e) =>
+                {
+                    if (!e.Frame.IsMain) return;
+                    e.Frame.ExecuteJavaScriptAsync(flashPatchJs);
+                };
+            }
 
             // 地址栏同步
             _browser.AddressChanged += (s, e) =>
@@ -551,6 +564,29 @@ namespace FlashGameBrowser
                 this.BeginInvoke(new Action(ToggleFullscreen));
             else
                 ToggleFullscreen();
+        }
+
+        /// <summary>
+        /// 从嵌入资源加载脚本文件
+        /// </summary>
+        private static string LoadEmbeddedScript(string resourceName)
+        {
+            try
+            {
+                var assembly = Assembly.GetExecutingAssembly();
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                {
+                    if (stream == null) return null;
+                    using (var reader = new StreamReader(stream, System.Text.Encoding.UTF8))
+                    {
+                        return reader.ReadToEnd();
+                    }
+                }
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 

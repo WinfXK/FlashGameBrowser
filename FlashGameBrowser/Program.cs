@@ -61,7 +61,10 @@ namespace FlashGameBrowser
             {
                 settings.CefCommandLineArgs.Add("ppapi-flash-path", flashPath);
                 settings.CefCommandLineArgs.Add("ppapi-flash-version", "34.0.0.330");
-                settings.CefCommandLineArgs.Add("enable-system-flash", "1");
+                // 确保插件始终运行（不弹"点击运行"）
+                settings.CefCommandLineArgs.Add("always-authorize-plugins", "1");
+                // 启用 PPAPI 插件（Chromium 85 默认开启，这里显式确保）
+                settings.CefCommandLineArgs.Add("enable-plugins", "1");
             }
 
             // === 其他设置 ===
