@@ -83,9 +83,8 @@ namespace FlashGameBrowser
             settings.Locale = "zh-CN";
             settings.AcceptLanguageList = "zh-CN,zh;q=0.9,en;q=0.8";
 
-            // 日志（诊断 Flash 问题时启用）
-            settings.LogSeverity = LogSeverity.Verbose;
-            settings.LogFile = Path.Combine(userDataPath, "cef_debug.log");
+            // 日志（诊断问题时改为 LogSeverity.Verbose + LogFile）
+            settings.LogSeverity = LogSeverity.Error;
 
             // 初始化
             Cef.Initialize(settings);
